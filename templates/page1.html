@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Little Something for Aljawhara</title>
+    <style>
+        body {
+            margin: 0; padding: 20px; display: flex; justify-content: center;
+            align-items: center; min-height: 100vh; box-sizing: border-box;
+            background-color: #141e41; font-family: Georgia, serif; color: white;
+        }
+        .container { text-align: center; max-width: 600px; padding: 20px; width: 100%; }
+        .login-section, .message-section, .inbox-section { display: none; }
+        .image-container img { max-width: 250px; width: 70%; height: auto; border-radius: 50%; margin-bottom: 20px; }
+        h1 { font-size: 2.5rem; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,.3); }
+        h2 { font-size: 1.8rem; margin-bottom: 20px; }
+        form { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        .form-group { width: 100%; max-width: 300px; text-align: left; display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 1rem; text-transform: uppercase; letter-spacing: 1px; }
+        input[type="text"], input[type="password"], textarea {
+            padding: 10px; width: 100%; border: none; border-radius: 4px;
+            font-size: 1rem; font-family: Arial, sans-serif; box-sizing: border-box;
+        }
+        textarea { resize: vertical; min-height: 140px; }
+        button {
+            padding: 10px 30px; background-color: #e67e22; color: white;
+            border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
+            font-size: 1rem; transition: transform .2s;
+        }
+        button:hover { transform: scale(1.03); background-color: #d35400; }
+        button:disabled { opacity: .65; cursor: wait; transform: none; }
+        .nav-buttons { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
+        .popup {
+            display: none; position: fixed; inset: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,.6); justify-content: center; align-items: center; z-index: 1000;
+        }
+        .popup-content {
+            background: white; color: black; padding: 30px; border-radius: 10px;
+            text-align: center; min-width: 240px; max-width: 500px; margin: 20px;
+        }
+        .popup-content button { margin-top: 10px; padding: 8px 20px; }
+        .inbox-container { max-height: 500px; overflow-y: auto; margin: 20px 0; text-align: left; }
+        .inbox-message {
+            background: rgba(255,255,255,.1); padding: 15px; margin: 10px 0;
+            border-radius: 4px; border-left: 4px solid #e67e22; overflow-wrap: anywhere;
+        }
+        .inbox-message .from { color: #e67e22; font-weight: bold; margin-bottom: 8px; }
+        .inbox-message .text { color: white; white-space: pre-wrap; margin-bottom: 8px; }
+        .inbox-message .time { color: #bbb; font-size: .85rem; }
+        .empty-inbox { color: #bbb; padding: 30px; font-size: 1.1rem; text-align: center; }
+        .hint { color: #bbb; font-size: .9rem; line-height: 1.5; }
+        @media (max-width: 480px) { h1 { font-size: 2rem; } h2 { font-size: 1.5rem; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <section class="login-section" id="loginSection">
+        <div class="image-container">
+            <img src="{{ url_for('static', filename='bc.JPG') }}" alt="Birthday celebration">
+        </div>
+        <h1>A Little Something for You 💗</h1>
+        <h3 style="color:#bbb; margin-bottom:20px; font-weight:normal;">A little surprise from the book club</h3>
+        <form id="loginForm" onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" placeholder="Enter your username" autocomplete="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="Choose a password if this is your first visit" autocomplete="current-password" minlength="8" required>
+            </div>
+            <p class="hint">First time here? Choose a password (at least 8 characters). You will use it for future visits.</p>
+            <button type="submit" id="loginButton">Login</button>
+        </form>
+    </section>
+
+    <section class="message-section" id="messageSection">
+        <h2>Send Aljawhara a Little Love 💝</h2>
+        <p class="hint">Write whatever you want her to remember. Your message will go straight to her inbox.</p>
+        <form onsubmit="sendAppreciation(event)">
+            <label for="message">Your Message</label>
+            <textarea id="message" maxlength="3000" placeholder="Write your birthday wishes..." required></textarea>
+            <button type="submit" id="sendButton">Send Message</button>
+        </form>
+        <div class="nav-buttons">
+            <button type="button" onclick="logout()" style="background-color:#3498db;">Log Out</button>
+        </div>
+    </section>
+
+    <section class="inbox-section" id="inboxSection">
+        <h2>Aljawhara's Birthday Inbox 📬</h2>
+        <p class="hint">All the lovely messages sent by your book-club friends.</p>
+        <div class="inbox-container" id="inboxContainer">
+            <div class="empty-inbox">Loading messages...</div>
+        </div>
+        <button type="button" onclick="logout()" style="background-color:#3498db; margin-top:15px;">Log Out</button>
+    </section>
+</div>
+
+<div id="popup" class="popup" role="dialog" aria-modal="true">
+    <div class="popup-content">
+        <p id="popup-text">Loading...</p>
+        <button type="button" onclick="closePopup()">OK</button>
+    </div>
+</div>
+
+<script>
+    async function safeJson(response) {
+        const text = await response.text();
+        let data;
+        try { data = JSON.parse(text); }
+        catch { throw new Error("The server returned an unexpected response. Please try again."); }
+        if (!response.ok) throw new Error(data.error || "Something went wrong.");
+        return data;
+    }
+
+    async function handleLogin(event) {
+        event.preventDefault();
+        const button = document.getElementById("loginButton");
+        button.disabled = true;
+        try {
+            const data = await fetch("/login", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    username: document.getElementById("username").value.trim(),
+                    password: document.getElementById("password").value
+                })
+            }).then(safeJson);
+
+            document.getElementById("loginSection").style.display = "none";
+            if (data.is_birthday_person) {
+                document.getElementById("inboxSection").style.display = "block";
+                await loadInbox();
+            } else {
+                document.getElementById("messageSection").style.display = "block";
+                showPopupMessage("You're in! Your message is ready for Aljawhara 💗");
+            }
+        } catch (error) {
+            showPopupMessage("❌ " + error.message);
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    async function sendAppreciation(event) {
+        event.preventDefault();
+        const button = document.getElementById("sendButton");
+        const messageField = document.getElementById("message");
+        const message = messageField.value.trim();
+        if (!message) return showPopupMessage("Please write a message first.");
+        button.disabled = true;
+        try {
+            const data = await fetch("/send-appreciation", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({message})
+            }).then(safeJson);
+            messageField.value = "";
+            showPopupMessage(data.message || "Your message has been sent! 💝");
+        } catch (error) {
+            showPopupMessage("❌ " + error.message);
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    async function loadInbox() {
+        const container = document.getElementById("inboxContainer");
+        container.innerHTML = '<div class="empty-inbox">Loading messages...</div>';
+        try {
+            const data = await fetch("/inbox").then(safeJson);
+            container.replaceChildren();
+            if (!data.messages || data.messages.length === 0) {
+                container.innerHTML = '<div class="empty-inbox">No messages yet. Your lovely surprises are on their way 💌</div>';
+                return;
+            }
+            data.messages.forEach(msg => {
+                const card = document.createElement("div");
+                card.className = "inbox-message";
+                const from = document.createElement("div");
+                from.className = "from";
+                from.textContent = "From: " + msg.from_name;
+                const body = document.createElement("div");
+                body.className = "text";
+                body.textContent = msg.message;
+                const time = document.createElement("div");
+                time.className = "time";
+                time.textContent = new Date(msg.timestamp).toLocaleString();
+                card.append(from, body, time);
+                container.appendChild(card);
+            });
+        } catch (error) {
+            container.textContent = error.message;
+        }
+    }
+
+    async function logout() {
+        try { await fetch("/logout", {method: "POST"}); } catch (_) {}
+        window.location.reload();
+    }
+
+    function showPopupMessage(message) {
+        document.getElementById("popup-text").textContent = message;
+        document.getElementById("popup").style.display = "flex";
+    }
+    function closePopup() {
+        document.getElementById("popup").style.display = "none";
+    }
+
+    document.getElementById("loginSection").style.display = "block";
+</script>
+</body>
+</html>
